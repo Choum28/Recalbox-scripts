@@ -43,8 +43,9 @@ def get_doublon(systeme):
     print "Duplicate rom for "+systeme+" : "+str(compteurdoublon)
     print ""
 
-ARGS = str(sys.argv[1])
-if ARGS == "":
+if len(sys.argv) > 1:
+    ARGS = str(sys.argv[1])
+else:
     ARGS = "all"
 if ARGS == "all":
     print ARGS
