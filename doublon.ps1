@@ -1,34 +1,38 @@
 <# 
 .SYNOPSIS
-    This script is intended to detect duplicate roms based on the name used by the gamelist.xml files of recalbox 
+    This script is intended to detect duplicate roms based on the name used by the gamelist.xml files of recalbox
 
 .DESCRIPTION
      This script will check in each subfolder of the roms folder, the file gamelist.xml in order to look for duplicates of the same game based on its name.
-     Duplicates are displayed on the screen and stored in a text file.
+     Duplicates roms are displayed on terminal and coule be store in log file.
 
 .PARAMETER source
 	Define the source folder for your roms folder
 	By default : \\recalbox\share\roms
 	
 .PARAMETER destination
-    Define in which folder the result file will be written
-    By default : . (in the same folder as the source).
+    Define in which folder the log file will be written
+    By default : . (in the same folder as the script).
     
 .PARAMETER systeme
     Define which systeme will be check (base of the system folder in recalbox inside the rom folder), by default this script will check all systems.
     By default : all
 
+.PARAMETER log
+    Define if you want a log file, put csv for a csv file, txt for a txt file, other value will not create log file
+    By default : n
+
 .EXAMPLE
 
 	.\Doublon.ps1
 	
-		Launch the script to check all system, the result file will be put in \\recalbox\share\roms
+		Launch the script to check all system, Duplicate roms will be display on terminal
 	
  -------------------------- EXEMPLE 2 --------------------------
 
- .\Doublon.ps1 -source ""\\recalbox\share\roms" -destination "c:\recalbox\résultats\" -systeme "snes"
+ .\Doublon.ps1 -source ""\\recalbox\share\roms" -destination "c:\recalbox\result" -systeme "snes" -log csv
 	
-		Launch the script to check duplicate snes rom, the result file will be put in c:\recalbox\résultats
+		Launch the script to check duplicate snes rom, the result file will be put in c:\recalbox\result\Duplicate_roms_recalbox.csv
 
 		
  .INPUTS
@@ -41,6 +45,11 @@
     AUTEUR:    Choum
 	
     HISTORIQUE VERSION:
+    1.2     09.09.2017
+            Fix duplicate name on screen and in log
+            better display on screen
+            Add Csv log file
+
     1.1     02.09.2017
             add path of the duplicate roms
             
@@ -53,81 +62,159 @@
 
  
  [CmdletBinding()]
- # Définition des arguments du script
+ # Define script argument
   Param(
-         [Parameter(Mandatory=$False,HelpMessage="Chemin vers dossier roms de recalbox")]
+         [Parameter(Mandatory=$False,HelpMessage="Path to the roms folder of recalbox")]
          [ValidateScript({Test-Path $_ -PathType Container})]
          [string]$Source = "\\recalbox\share\roms",
    
-         [Parameter(Mandatory=$False,HelpMessage="Chemin vers dossier ou sera stocké le fichier de résultats")]
+         [Parameter(Mandatory=$False,HelpMessage="Path to the folder where you want your log file is argument -log is set to y, by default same folder as this script")]
          [ValidateScript({Test-Path $_ -PathType Container})]
          [string]$Destination= ".",
          
-         [Parameter(Mandatory=$False,HelpMessage="Définis le système à vérifier, valeur all pour l'ensemble des systèmes")]
-         [Object]$systeme = "all"
+         [Parameter(Mandatory=$False,HelpMessage="Define which system you want to check (base on roms folder), all by default")]
+         [Object]$systeme = "all",
+
+         [Parameter(Mandatory=$False,HelpMessage="if txt, create a txt log file call duplicate, if csv create a csv file, default value n")]
+         [Object]$log = "n"
  )
  
-$result = "$Destination\doublon.txt"
-New-Item $result -force
-$a = ""
-
-function Get-Name ($systeme)
-{
-    $roms = @("")
-    $rompath = @("")
-    $compteurDoublon = 0
-    $compteurA = 0
-    "### SEARCH $systeme ###" >> $result 
-    try {
-        $a = (Select-Xml $source\$systeme\gamelist.xml -XPath "//name" | forEach-object {$_.node.InnerXML})
-        $path = (Select-Xml $source\$systeme\gamelist.xml -XPath "//path" | forEach-object {$_.node.InnerXML})
-        }
-    catch {
-        Write-Host "no gamelist $systeme" 
-        "$source\$systeme\gamelist.xml not present or not readable" >> $result 
-        $a = ""
-    }
-    foreach ($lines in $a) 
+ if ($log -eq "txt")
     {
-        $lines = $lines -replace "\[([^\[]*)\]",""
-        $compteurB = 0
-        foreach ($x in $roms)
-            {
-                if ($lines -eq $x)
-                    {
-                        $lines >> $result
-                        $path[$compteura] >> $result
-                        $rompath[$compteurB] >> $result 
-                        write-host $lines
-                        write-host $path[$compteurA]
-                        write-host $rompath[$compteurB]
-                        write-host " "
-                        $compteurDoublon = $compteurDoublon +1  
-                    }
-            $compteurB = $compteurB +1
-            }
-        $rompath += $path[$compteurA]
-        $roms += $lines
-        $compteurA = $compteurA +1
+        $result = "$Destination\Duplicate_roms_recalbox.txt"
+        New-Item $result -force  > $null
     }
-     
+elseif ($log -eq "csv") 
+    {
+        $result = "$Destination\Duplicate_roms_recalbox.csv"
+        New-Item $result -force  > $null
+    }
 
+$Gamelist = ""
 
-
-    "### END $systeme ### " >> $result 
-    write-host "doublons sur $systeme : $compteurDoublon"
+function add-Rom
+{
+ param([string]$Game,[string]$Path,[string]$systeme)
+ $d=New-Object PSObject
+ $d | Add-Member -Name Nom -MemberType NoteProperty -Value $Game
+ $d | Add-Member -Name Chemin -MemberType NoteProperty -Value $Path
+ $d | Add-Member -Name Systeme -MemberType NoteProperty -Value $systeme
+ return $d
 }
 
+function Get-Duplicate ($systeme)
+{
+    Write-Host "######### SEARCH $systeme #########"
+    if ($log -eq "txt"){"######### SEARCH $systeme #########" | Out-File -Append $result}
+    $roms = @()
+    $liste = @()
+    $rompath = @()
+    $compteurDoublon = 0
+    $compteurA = 0
+    try {
+            $Gamelist = (Select-Xml $source\$systeme\gamelist.xml -XPath "//name" | forEach-object {$_.node.InnerXML})
+            $path = (Select-Xml $source\$systeme\gamelist.xml -XPath "//path" | forEach-object {$_.node.InnerXML})
+        }
+    catch 
+        {
+            Write-Host "no gamelist $systeme" 
+            if ($log -eq "txt"){"$source\$systeme\gamelist.xml not present or not readable" | Out-File -Append $result}
+            $Gamelist = ""
+        }
+    if ($gamelist -ne "")
+    {
+        foreach ($lines in $Gamelist) 
+        {
+            $lines = $lines -replace "\[([^\[]*)\]",""
+            $compteurB = 0
+            foreach ($x in $roms)
+                {
+                    if ($lines -eq $x)
+                        {
+                            $test = $path[$compteurA].Replace('(',"\(")
+                            $test = $test.Replace(')',"\)")
+                            if ($liste | Where-Object { $liste.Chemin -match $test} )
+                                {
+                                }
+                            else
+                                {
+                                    $liste += add-Rom -Game $lines -Path $path[$compteurA] -systeme $systeme
+                                }
+                            $test = $rompath[$compteurB].Replace('(',"\(")
+                            $test = $test.Replace(')',"\)")     
+                            if ($liste | Where-Object { $liste.Chemin -match $test })
+                                {}
+                            else 
+                                {
+                                    $liste += add-Rom -Game $lines -Path $rompath[$compteurB] -systeme $systeme
+                                }                                
+                            $compteurDoublon = $compteurDoublon +1
+                        }
+                $compteurB = $compteurB +1
+                }
+            $rompath += $path[$compteurA]
+            $roms += $lines
+            $compteurA = $compteurA +1
+        }
+        $liste = $liste | Sort-Object Nom
+        Write-Host "Duplicate roms found in $systeme : $compteurDoublon"
+        if ($log -eq "txt")
+            {
+                "Duplicate roms found in $systeme : $compteurDoublon" | Out-File -Append $result 
+            }
+        return $liste
+    }
+}
 
 if ($systeme -eq "all")
     {
+        $csv = @()
         $c = Get-ChildItem $source | Where-Object {$_.PSIsContainer} | Select-object $_.name
         foreach ($systeme in $c)
             {
-                get-name($systeme)
+                $liste = Get-Duplicate($systeme)
+                Write-Host ($liste | Format-Table | Out-String)
+                write-Host "######### END $systeme #########"
+                write-Host ""
+                write-Host ""
+                if ($log -eq "txt")
+                    {
+                        $unik = $liste | Group-Object -Property Nom | Select-Object -ExpandProperty name #Recover unique game name
+                        foreach($x in $unik)
+                        {
+                            "$x" | out-file -append $result 
+                            $liste | Where-Object {$_.Nom -match "$x"} | Select-Object Chemin | Format-Table -hidetableheaders  | out-file -append $result # DIsplay all path for unique game
+                        }
+                        "######### END $systeme #########" | Out-File -Append $result
+                        "" | Out-File -Append $result
+                        "" | Out-File -Append $result
+                    }
+                elseif ($log -eq "csv")
+                    {
+                        $csv = $csv + $liste
+                    }
             }
-        }
-    else {
-        Get-Name($systeme)
+        if ($log -eq "csv")
+            {
+                $csv | Export-csv $result -noType -Encoding 'utf8'
+            }
     }
-          
+else 
+    {
+        $liste = Get-Duplicate($systeme)
+        $unik = $liste | Group-Object -Property Nom | Select-Object -ExpandProperty name #Recover unique game name
+        Write-Host ($liste | Format-Table | Out-String)
+        if ($log -eq "txt")
+            {
+                foreach($x in $unik)
+                {
+                    "$x" | out-file -append $result 
+                    $liste | Where-Object {$_.Nom -match "$x"} | Select-Object Chemin | Format-Table -hidetableheaders  | out-file -append $result # DIsplay all path for unique game
+                }
+            }
+        if ($log -eq "csv")
+            {
+                $liste | Export-csv $result -noType -Encoding 'utf8'
+            }
+    }
+       

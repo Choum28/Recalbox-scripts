@@ -40,7 +40,7 @@ def get_doublon(systeme):
             compteur_a = compteur_a +1
     else:
         print "no gamelist found"
-    print "Duplicate rom for "+systeme+" : "+str(compteurdoublon)
+    print "Duplicate roms for "+systeme+" : "+str(compteurdoublon)
     print ""
 
 if len(sys.argv) > 1:
