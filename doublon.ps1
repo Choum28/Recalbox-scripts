@@ -197,9 +197,9 @@ if ($systeme -eq "all")
     }
 else 
     {
+        Write-Host "######### SEARCH $systeme #########"
         ($liste, $NbDuplicate) = Get-Duplicate($systeme)
         $unik = $liste | Group-Object -Property Nom | Select-Object -ExpandProperty name #Recover unique game name
-        Write-Host "######### SEARCH $systeme #########"
         Write-Host "Duplicate roms found in $systeme : $NbDuplicate"
         Write-Host ($liste | Format-Table | Out-String)
         write-Host "######### END $systeme #########"
