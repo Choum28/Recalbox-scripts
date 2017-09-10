@@ -59,7 +59,6 @@
 .LINK
 
  #>
-
  
  [CmdletBinding()]
  # Define script argument
@@ -68,7 +67,7 @@
          [ValidateScript({Test-Path $_ -PathType Container})]
          [string]$Source = "\\recalbox\share\roms",
    
-         [Parameter(Mandatory=$False,HelpMessage="Path to the folder where you want your log file is argument -log is set to y, by default same folder as this script")]
+         [Parameter(Mandatory=$False,HelpMessage="Path to the folder where you want your log file is argument -log is set to y, by default current folder of powershell temrinal")]
          [ValidateScript({Test-Path $_ -PathType Container})]
          [string]$Destination= ".",
          
@@ -102,10 +101,9 @@ function add-Rom
  return $d
 }
 
-function Get-Duplicate ($systeme)
+function Get-Duplicate ($systeme) 
+# Return an array with all duplicate roms, path & system, also return nb of duplicate roms found.
 {
-    Write-Host "######### SEARCH $systeme #########"
-    if ($log -eq "txt"){"######### SEARCH $systeme #########" | Out-File -Append $result}
     $roms = @()
     $liste = @()
     $rompath = @()
@@ -114,12 +112,15 @@ function Get-Duplicate ($systeme)
     try {
             $Gamelist = (Select-Xml $source\$systeme\gamelist.xml -XPath "//name" | forEach-object {$_.node.InnerXML})
             $path = (Select-Xml $source\$systeme\gamelist.xml -XPath "//path" | forEach-object {$_.node.InnerXML})
+            $path = $path.replace('&amp;', '&')
+            $Gamelist = $Gamelist.replace('&amp;', '&')
         }
     catch 
         {
             Write-Host "no gamelist $systeme" 
             if ($log -eq "txt"){"$source\$systeme\gamelist.xml not present or not readable" | Out-File -Append $result}
             $Gamelist = ""
+            $compteurDoublon = "N/A"
         }
     if ($gamelist -ne "")
     {
@@ -127,15 +128,14 @@ function Get-Duplicate ($systeme)
         {
             $lines = $lines -replace "\[([^\[]*)\]",""
             $compteurB = 0
-            foreach ($x in $roms)
+            foreach ($x in $roms)  
                 {
                     if ($lines -eq $x)
                         {
                             $test = $path[$compteurA].Replace('(',"\(")
                             $test = $test.Replace(')',"\)")
                             if ($liste | Where-Object { $liste.Chemin -match $test} )
-                                {
-                                }
+                                {}
                             else
                                 {
                                     $liste += add-Rom -Game $lines -Path $path[$compteurA] -systeme $systeme
@@ -156,23 +156,23 @@ function Get-Duplicate ($systeme)
             $roms += $lines
             $compteurA = $compteurA +1
         }
-        $liste = $liste | Sort-Object Nom
-        Write-Host "Duplicate roms found in $systeme : $compteurDoublon"
-        if ($log -eq "txt")
-            {
-                "Duplicate roms found in $systeme : $compteurDoublon" | Out-File -Append $result 
-            }
-        return $liste
+        if ($compteurDoublon > 0) # Fix when no gamelist (to not return a 0)
+        {$liste = $liste | Sort-Object Nom}
     }
+    return ($liste,$compteurDoublon)
 }
-
+# main
 if ($systeme -eq "all")
     {
         $csv = @()
         $c = Get-ChildItem $source | Where-Object {$_.PSIsContainer} | Select-object $_.name
         foreach ($systeme in $c)
             {
-                $liste = Get-Duplicate($systeme)
+                Write-Host "######### SEARCH $systeme #########"
+                if ($log -eq "txt"){"######### SEARCH $systeme #########" | Out-File -Append $result}
+                ($liste, $NbDuplicate) = Get-Duplicate($systeme)
+                Write-Host "Duplicate roms found in $systeme : $NbDuplicate"
+                if ($log -eq "txt"){ "Duplicate roms found in $systeme : $NbDuplicate" | Out-File -Append $result }
                 Write-Host ($liste | Format-Table | Out-String)
                 write-Host "######### END $systeme #########"
                 write-Host ""
@@ -190,14 +190,10 @@ if ($systeme -eq "all")
                         "" | Out-File -Append $result
                     }
                 elseif ($log -eq "csv")
-                    {
-                        $csv = $csv + $liste
-                    }
+                    {$csv = $csv + $liste}
             }
         if ($log -eq "csv")
-            {
-                $csv | Export-csv $result -noType -Encoding 'utf8'
-            }
+            {$csv | Export-csv $result -noType -Encoding 'utf8'}
     }
 else 
     {
